@@ -179,6 +179,9 @@ CREATE TABLE settings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ایندکس‌های اضافی
+CREATE INDEX idx_users_first_name ON users(first_name);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_payments_completed_at ON payments(completed_at);
 CREATE INDEX idx_games_status_type ON games(status, type);
 CREATE INDEX idx_players_score ON game_players(user_id, score DESC);
 CREATE INDEX idx_payments_user_status ON payments(user_id, status);
