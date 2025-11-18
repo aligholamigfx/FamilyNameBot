@@ -91,17 +91,6 @@ define('RANKS', $RANKS);
 // تنظیمات زمان
 date_default_timezone_set('Asia/Tehran');
 
-// تنظیمات Error Reporting
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-ini_set('error_log', dirname(__FILE__) . '/logs/php_errors.log');
-
-// تنظیمات امنیتی
-header('X-Content-Type-Options: nosniff');
-header('X-Frame-Options: DENY');
-header('X-XSS-Protection: 1; mode=block');
-
 // فایل‌های لاگ
 define('LOG_DIR', dirname(__FILE__) . '/logs');
 if (!is_dir(LOG_DIR)) {
