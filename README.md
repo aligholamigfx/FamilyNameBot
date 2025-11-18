@@ -1,3 +1,3 @@
-ربات اسم و فامیل تلگرام 
-زبان برنامه نویسی : PHP و MYSQL 
-نویسنده : علی غلامی 
+Family And Name Telegram Bot
+PHP & MYSQL Database.
+Developer : Ai 
