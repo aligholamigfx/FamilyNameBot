@@ -3,26 +3,18 @@
 // مدیریت کلمات
 // ============================================
 
-session_start();
+require_once '../init.php';
+require_admin_login();
 
-if (!isset($_SESSION['admin']) || $_SESSION['admin'] !== true) {
-    header('Location: login.php');
-    exit;
-}
-
-require_once '../config.php';
-require_once '../Database.php';
-
-$db = new Database();
 $message = '';
 $error = '';
 
 // افزودن کلمه
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($_POST['action'] === 'add') {
-        $word = trim($_POST['word'] ?? '');
-        $category = trim($_POST['category'] ?? '');
-        $difficulty = $_POST['difficulty'] ?? 'متوسط';
+        $word = sanitize_input($_POST['word'] ?? '');
+        $category = sanitize_input($_POST['category'] ?? '');
+        $difficulty = sanitize_input($_POST['difficulty'] ?? 'متوسط');
 
         if (empty($word)) {
             $error = 'لطفاً کلمه را وارد کنید';
@@ -33,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'word' => $word,
                 'category' => $category,
                 'difficulty' => $difficulty,
-                'is_active' => '1',
+                'is_active' => 1,
                 'created_at' => date('Y-m-d H:i:s')
             ]);
 
@@ -47,13 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     elseif ($_POST['action'] === 'update') {
         $wordId = (int)$_POST['word_id'];
-        $word = trim($_POST['word'] ?? '');
-        $category = trim($_POST['category'] ?? '');
-        $difficulty = $_POST['difficulty'] ?? 'متوسط';
+        $word = sanitize_input($_POST['word'] ?? '');
+        $category = sanitize_input($_POST['category'] ?? '');
+        $difficulty = sanitize_input($_POST['difficulty'] ?? 'متوسط');
 
         $result = $db->update('words',
             ['word' => $word, 'category' => $category, 'difficulty' => $difficulty],
-            "id = $wordId"
+            "id = ?", "i", [$wordId]
         );
 
         if ($result) {
@@ -65,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     elseif ($_POST['action'] === 'delete') {
         $wordId = (int)$_POST['word_id'];
-        $result = $db->update('words', ['is_active' => '0'], "id = $wordId");
+        $result = $db->update('words', ['is_active' => 0], "id = ?", "i", [$wordId]);
 
         if ($result) {
             $message = '✅ کلمه با موفقیت حذف شد';
@@ -76,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     elseif ($_POST['action'] === 'restore') {
         $wordId = (int)$_POST['word_id'];
-        $result = $db->update('words', ['is_active' => '1'], "id = $wordId");
+        $result = $db->update('words', ['is_active' => 1], "id = ?", "i", [$wordId]);
 
         if ($result) {
             $message = '✅ کلمه با موفقیت بازگردانی شد';
@@ -88,22 +80,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // دریافت فیلتر
 $filter = $_GET['filter'] ?? 'active';
-$search = trim($_GET['search'] ?? '');
-$category_filter = $_GET['category'] ?? '';
+$search = sanitize_input($_GET['search'] ?? '');
+$category_filter = sanitize_input($_GET['category'] ?? '');
 
 // ساخت query
+$params = [];
+$types = '';
 $whereClause = $filter === 'active' ? "is_active = 1" : "is_active = 0";
 
 if (!empty($search)) {
-    $whereClause .= " AND word LIKE '%" . $db->escape($search) . "%'";
+    $whereClause .= " AND word LIKE ?";
+    $params[] = "%" . $search . "%";
+    $types .= "s";
 }
 
 if (!empty($category_filter)) {
-    $whereClause .= " AND category = '" . $db->escape($category_filter) . "'";
+    $whereClause .= " AND category = ?";
+    $params[] = $category_filter;
+    $types .= "s";
 }
 
 // دریافت کلمات
-$words = $db->select("SELECT * FROM words WHERE $whereClause ORDER BY created_at DESC");
+$words = $db->select("SELECT * FROM words WHERE $whereClause ORDER BY created_at DESC", $types, $params);
 
 // دریافت دسته‌ها
 $categories = $db->select("SELECT DISTINCT category FROM words WHERE is_active = 1 ORDER BY category");
@@ -120,217 +118,9 @@ $wordStats = $db->select("SELECT category, COUNT(*) as count FROM words WHERE is
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>مدیریت کلمات - پنل ادمین</title>
     <link rel="stylesheet" href="styles.css">
-    <style>
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 2000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            animation: fadeIn 0.3s ease;
-        }
-
-        .modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #e0e0e0;
-        }
-
-        .modal-header h2 {
-            margin: 0;
-            color: var(--dark);
-        }
-
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 28px;
-            cursor: pointer;
-            color: #999;
-            transition: all 0.3s ease;
-        }
-
-        .close-btn:hover {
-            color: var(--dark);
-            transform: rotate(90deg);
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--dark);
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-family: inherit;
-            font-size: 14px;
-            transition: all 0.3s ease;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .modal-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            margin-top: 25px;
-        }
-
-        .search-bar {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .search-input {
-            flex: 1;
-            min-width: 250px;
-            padding: 10px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .filter-select {
-            padding: 10px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            background: white;
-            cursor: pointer;
-        }
-
-        .words-table {
-            width: 100%;
-            margin-top: 20px;
-        }
-
-        .words-table th,
-        .words-table td {
-            padding: 12px;
-            text-align: right;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .words-table th {
-            background: #f5f7fa;
-            font-weight: 600;
-            color: var(--dark);
-        }
-
-        .words-table tbody tr:hover {
-            background: #f9fafc;
-        }
-
-        .difficulty-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .difficulty-easy {
-            background: rgba(76, 175, 80, 0.1);
-            color: var(--success);
-        }
-
-        .difficulty-medium {
-            background: rgba(255, 215, 0, 0.1);
-            color: #FF9800;
-        }
-
-        .difficulty-hard {
-            background: rgba(255, 107, 107, 0.1);
-            color: var(--danger);
-        }
-
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 25px;
-        }
-
-        .stat-mini {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            border-right: 3px solid var(--primary);
-        }
-
-        .stat-mini .value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--dark);
-        }
-
-        .stat-mini .label {
-            font-size: 12px;
-            color: #999;
-            margin-top: 5px;
-        }
-    </style>
 </head>
 <body>
-    <!-- Sidebar (same as dashboard.php) -->
+    <!-- Sidebar -->
     <nav class="sidebar">
         <div class="sidebar-header">
             <h2>🤖 ربات</h2>
@@ -362,14 +152,12 @@ $wordStats = $db->select("SELECT category, COUNT(*) as count FROM words WHERE is
         <?php if (!empty($message)): ?>
         <div class="message success-message">
             <?php echo $message; ?>
-            <button onclick="this.parentElement.style.display='none'" style="float: left; background: none; border: none; color: inherit; cursor: pointer; font-size: 18px;">×</button>
         </div>
         <?php endif; ?>
 
         <?php if (!empty($error)): ?>
         <div class="message error-message">
             <?php echo $error; ?>
-            <button onclick="this.parentElement.style.display='none'" style="float: left; background: none; border: none; color: inherit; cursor: pointer; font-size: 18px;">×</button>
         </div>
         <?php endif; ?>
 
@@ -395,18 +183,18 @@ $wordStats = $db->select("SELECT category, COUNT(*) as count FROM words WHERE is
         <div class="card">
             <div class="card-body">
                 <form method="GET" class="search-bar">
-                    <input 
-                        type="text" 
-                        name="search" 
-                        class="search-input" 
-                        placeholder="جستجو برای کلمه..." 
+                    <input
+                        type="text"
+                        name="search"
+                        class="search-input"
+                        placeholder="جستجو برای کلمه..."
                         value="<?php echo htmlspecialchars($search); ?>"
                     >
 
                     <select name="category" class="filter-select">
                         <option value="">تمام دسته‌ها</option>
                         <?php foreach ($categories as $cat): ?>
-                        <option value="<?php echo htmlspecialchars($cat['category']); ?>" 
+                        <option value="<?php echo htmlspecialchars($cat['category']); ?>"
                             <?php echo $category_filter === $cat['category'] ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($cat['category']); ?>
                         </option>
@@ -461,7 +249,7 @@ $wordStats = $db->select("SELECT category, COUNT(*) as count FROM words WHERE is
                                 <td><?php echo date('Y-m-d', strtotime($word['created_at'])); ?></td>
                                 <td>
                                     <div class="action-buttons">
-                                        <button class="btn btn-secondary" onclick="editWord(<?php echo $word['id']; ?>)">✏️ ویرایش</button>
+                                        <button class="btn btn-secondary" onclick='editWord(<?php echo json_encode($word, JSON_UNESCAPED_UNICODE); ?>)'>✏️ ویرایش</button>
                                         <?php if ($filter === 'active'): ?>
                                         <form method="POST" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
                                             <input type="hidden" name="action" value="delete">
@@ -531,34 +319,50 @@ $wordStats = $db->select("SELECT category, COUNT(*) as count FROM words WHERE is
     </div>
 
     <script>
+        const modal = document.getElementById('wordModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const formAction = document.getElementById('formAction');
+        const wordForm = document.getElementById('wordForm');
+        const wordIdInput = document.getElementById('wordId');
+        const wordInput = document.getElementById('word');
+        const categoryInput = document.getElementById('category');
+        const difficultyInput = document.getElementById('difficulty');
+
         function openAddWordModal() {
-            document.getElementById('modalTitle').textContent = '➕ افزودن کلمه جدید';
-            document.getElementById('formAction').value = 'add';
-            document.getElementById('wordForm').reset();
-            document.getElementById('wordId').value = '';
-            document.getElementById('wordModal').classList.add('active');
+            modalTitle.textContent = '➕ افزودن کلمه جدید';
+            formAction.value = 'add';
+            wordForm.reset();
+            wordIdInput.value = '';
+            modal.classList.add('active');
         }
 
         function closeWordModal() {
-            document.getElementById('wordModal').classList.remove('active');
+            modal.classList.remove('active');
         }
 
-        function editWord(wordId) {
-            alert('ویرایش کلمه ' + wordId);
-            // در نسخه کامل، باید از AJAX برای دریافت اطلاعات کلمه استفاده شود
+        function editWord(wordData) {
+            modalTitle.textContent = '✏️ ویرایش کلمه';
+            formAction.value = 'update';
+            wordIdInput.value = wordData.id;
+            wordInput.value = wordData.word;
+            categoryInput.value = wordData.category;
+            difficultyInput.value = wordData.difficulty;
+            modal.classList.add('active');
         }
 
-        // بستن مودال با کلیک بیرون از آن
-        document.getElementById('wordModal').addEventListener('click', function(e) {
+        modal.addEventListener('click', function(e) {
             if (e.target === this) {
                 closeWordModal();
             }
         });
 
-        // بستن پیام‌ها بعد از 5 ثانیه
         setTimeout(function() {
             const messages = document.querySelectorAll('.message');
-            messages.forEach(msg => msg.style.display = 'none');
+            messages.forEach(msg => {
+                msg.style.transition = 'opacity 0.5s';
+                msg.style.opacity = '0';
+                setTimeout(() => msg.style.display = 'none', 500);
+            });
         }, 5000);
     </script>
 </body>
